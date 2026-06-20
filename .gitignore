@@ -1,1 +1,69 @@
+<<<<<<< HEAD
 bengaluru_drive.graphml
+=======
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+*.egg
+*.egg-info/
+dist/
+build/
+.eggs/
+.Python
+pip-selfcheck.json
+
+# Virtual environments
+env/
+venv/
+.venv/
+ENV/
+
+# Streamlit secrets (NEVER commit these)
+.streamlit/secrets.toml
+.streamlit/credentials.toml
+
+# Environment variables
+.env
+.env.local
+.env.*.local
+
+# Data & model artifacts
+data/*.csv
+data/*.db
+data/*.sqlite
+models/*.pkl
+models/*.joblib
+models/*.h5
+models/*.pt
+models/*.pth
+models/*.bin
+*.model
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Jupyter
+.ipynb_checkpoints/
+*.ipynb
+
+# Logs
+*.log
+logs/
+
+# Credentials & keys
+*.pem
+*.key
+credentials.json
+service_account.json
+
+# OS
+.DS_Store
+>>>>>>> 276800f079b357dfcd3e3f144f805595294096fa
