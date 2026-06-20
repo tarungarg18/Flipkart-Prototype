@@ -1,7 +1,7 @@
 import streamlit as st
 from datetime import datetime, date, time as time_type
-from utils.mapmyindia import search_places, get_token
-from models.predictor import predict_severity_score
+from utils.geoapify import search_places, reverse_geocode, _key as geo_key
+from models.predictor import predict
 
 EVENT_CAUSES = [
     "Select cause",
@@ -12,32 +12,90 @@ EVENT_CAUSES = [
 ]
 
 
-def _init_state():
+def init_state():
     defaults = {
-        "lat_val":        0.0,
-        "lng_val":        0.0,
-        "addr_results":   [],
-        "addr_confirmed": None,
-        "severity_result": None,
-        "last_searched_q": "",
+        "lat_val":          0.0,
+        "lng_val":          0.0,
+        "addr_results":     [],
+        "addr_confirmed":   None,
+        "last_searched_q":  "",
+        "last_rev_geocode": (0.0, 0.0),
+        "last_map_click":   None,
+        "severity_result":  None,
     }
     for k, v in defaults.items():
         if k not in st.session_state:
             st.session_state[k] = v
 
 
-def _severity_meta(score: float):
+def in_bangalore(lat, lng):
+    return 12.6 <= lat <= 13.25 and 77.3 <= lng <= 77.9
+
+
+def severity_meta(score):
     if score >= 7.5:
         return "Critical", "#dc2626", "#fef2f2", "#dc2626"
     if score >= 5.0:
-        return "High",     "#ea580c", "#fff7ed", "#ea580c"
+        return "High", "#ea580c", "#fff7ed", "#ea580c"
     if score >= 3.0:
-        return "Medium",   "#d97706", "#fffbeb", "#d97706"
-    return     "Low",      "#16a34a", "#f0fdf4", "#16a34a"
+        return "Medium", "#d97706", "#fffbeb", "#d97706"
+    return "Low", "#16a34a", "#f0fdf4", "#16a34a"
+
+
+def build_map(lat, lng):
+    import folium
+    center_lat = lat if lat != 0.0 else 12.9716
+    center_lng = lng if lng != 0.0 else 77.5946
+    zoom = 14 if lat != 0.0 else 12
+
+    key = geo_key()
+    if key:
+        tiles = f"https://maps.geoapify.com/v1/tile/osm-bright/{{z}}/{{x}}/{{y}}.png?apiKey={key}"
+        attr = "OpenStreetMap"
+    else:
+        tiles = "OpenStreetMap"
+        attr = "OpenStreetMap"
+
+    m = folium.Map(
+        location=[center_lat, center_lng],
+        zoom_start=zoom,
+        tiles=tiles,
+        attr=attr,
+        prefer_canvas=True,
+        control_scale=False,
+    )
+    m.get_root().html.add_child(folium.Element(
+        "<style>.leaflet-control-attribution{display:none !important;}</style>"
+    ))
+
+    if lat != 0.0 and lng != 0.0:
+        label = (st.session_state.addr_confirmed or {}).get("label", f"{lat:.5f}, {lng:.5f}")
+        folium.CircleMarker(
+            location=[lat, lng],
+            radius=10,
+            color="#4f46e5",
+            fill=True,
+            fill_color="#4f46e5",
+            fill_opacity=0.8,
+            tooltip=label,
+        ).add_to(m)
+
+    return m
 
 
 def render():
-    _init_state()
+    init_state()
+
+    lat_val = st.session_state.lat_val
+    lng_val = st.session_state.lng_val
+
+    if (lat_val != 0.0 and lng_val != 0.0
+            and (lat_val, lng_val) != st.session_state.last_rev_geocode):
+        addr = reverse_geocode(lat_val, lng_val)
+        st.session_state.last_rev_geocode = (lat_val, lng_val)
+        if addr:
+            st.session_state.addr_confirmed = {"label": addr, "lat": lat_val, "lon": lng_val}
+            st.session_state.addr_results = []
 
     st.markdown("""
     <div class="page-header">
@@ -46,137 +104,159 @@ def render():
     </div>
     """, unsafe_allow_html=True)
 
-    # ── LOCATION ──────────────────────────────────────────────────────────────
+    st.markdown(
+        '<p class="section-label">Bangalore Map &nbsp;&middot;&nbsp;'
+        '<span class="section-label-hint">click to set location</span></p>',
+        unsafe_allow_html=True,
+    )
+
+    from streamlit_folium import st_folium
+    m = build_map(lat_val, lng_val)
+    map_data = st_folium(m, height=380, use_container_width=True)
+
+    clicked = map_data.get("last_clicked") if map_data else None
+    if clicked and clicked != st.session_state.last_map_click:
+        st.session_state.last_map_click = clicked
+        st.session_state.lat_val = round(clicked["lat"], 6)
+        st.session_state.lng_val = round(clicked["lng"], 6)
+        st.rerun()
+
+    st.divider()
+
     st.markdown('<p class="section-label">Location</p>', unsafe_allow_html=True)
 
-    # Address field — search runs inline on every rerun when query changes
     addr_input = st.text_input(
-        "address_field",
+        "Search address",
         key="addr_query",
         placeholder="Start typing a Bangalore location...",
         label_visibility="collapsed",
     )
 
-    # Inline debounce: search whenever query >= 3 chars and has changed
-    q = addr_input.strip()
+    q = (addr_input or "").strip()
     if q and len(q) >= 3 and q != st.session_state.last_searched_q:
         results = search_places(q)
-        st.session_state.addr_results   = results
+        st.session_state.addr_results = results
         st.session_state.last_searched_q = q
         if results:
             st.session_state.addr_confirmed = None
     elif len(q) < 3:
         st.session_state.addr_results = []
 
-    # Suggestion list
     if st.session_state.addr_results:
         st.caption("Select a location:")
         for i, r in enumerate(st.session_state.addr_results):
-            name  = r.get("placeName", "")
-            paddr = r.get("placeAddress", "")
-            label = f"{name}  —  {paddr}" if paddr else name
-            if st.button(label, key=f"sug_{i}", use_container_width=True):
+            if st.button(r["label"], key=f"sug_{i}", use_container_width=True):
                 st.session_state.addr_confirmed = r
-                st.session_state.addr_results   = []
+                st.session_state.addr_results = []
+                st.session_state.lat_val = r["lat"]
+                st.session_state.lng_val = r["lon"]
+                st.session_state.last_rev_geocode = (r["lat"], r["lon"])
                 st.rerun()
 
-    # Confirmed address pill
     if st.session_state.addr_confirmed:
-        r     = st.session_state.addr_confirmed
-        name  = r.get("placeName", "")
-        paddr = r.get("placeAddress", "")
+        c = st.session_state.addr_confirmed
         st.markdown(
-            f'<div class="confirmed-addr">'
-            f'{name}{"  —  " + paddr if paddr else ""}'
-            f'</div>',
+            f'<div class="confirmed-addr">{c["label"]}</div>',
             unsafe_allow_html=True,
         )
 
-    # Lat / Long — optional, enter manually if needed
     ll1, ll2 = st.columns(2)
-    lat = ll1.number_input("Latitude (optional)",  key="lat_val", format="%.6f", step=0.0001)
-    lng = ll2.number_input("Longitude (optional)", key="lng_val", format="%.6f", step=0.0001)
+    ll1.number_input(
+        "Latitude",
+        key="lat_val",
+        format="%.6f",
+        step=0.0001,
+        help="Auto-filled from address search or map click. Enter manually to look up the address.",
+    )
+    ll2.number_input(
+        "Longitude",
+        key="lng_val",
+        format="%.6f",
+        step=0.0001,
+        help="Auto-filled from address search or map click. Enter manually to look up the address.",
+    )
 
     st.divider()
 
-    # ── EVENT DETAILS ─────────────────────────────────────────────────────────
     st.markdown('<p class="section-label">Event Details</p>', unsafe_allow_html=True)
 
     ec1, ec2 = st.columns(2)
-    event_type  = ec1.selectbox("Event Type",  ["Planned", "Unplanned"])
+    event_type = ec1.selectbox("Event Type", ["Planned", "Unplanned"])
     event_cause = ec2.selectbox("Event Cause", EVENT_CAUSES)
 
-    dc1, dc2 = st.columns(2)
-    start_date = dc1.date_input("Start Date", value=date.today())
-    start_time = dc2.time_input("Start Time", value=time_type(9, 0), step=300)
+    start_date = st.date_input("Start Date", value=date.today())
 
-    st.markdown("""
-    <div class="road-closure-banner">
-      <div>
-        <div class="rcb-title">Road Closure Required</div>
-        <div class="rcb-sub">Automatically determined by road closure model</div>
-      </div>
-      <span class="rcb-badge">AUTO &middot; TRUE</span>
-    </div>
-    """, unsafe_allow_html=True)
+    tc1, tc2 = st.columns(2)
+    start_hour = tc1.number_input("Hour (0-23)", min_value=0, max_value=23, value=9, step=1)
+    start_min = tc2.number_input("Minute (0-59)", min_value=0, max_value=59, value=0, step=1)
 
     st.markdown("<br>", unsafe_allow_html=True)
 
-    # ── PREDICT ───────────────────────────────────────────────────────────────
-    if st.button("Predict Severity Score", use_container_width=True, type="primary"):
+    if st.button("Predict Severity", use_container_width=True, type="primary"):
+        lat_in = st.session_state.lat_val
+        lng_in = st.session_state.lng_val
+
         if event_cause == "Select cause":
             st.error("Please select an event cause.")
+        elif lat_in == 0.0 or lng_in == 0.0:
+            st.error("Please set a location using the map, address search, or coordinates.")
+        elif not in_bangalore(lat_in, lng_in):
+            st.error("Please enter a location within Bangalore.")
         else:
-            confirmed   = st.session_state.addr_confirmed
-            address_str = (
-                (confirmed.get("placeName", "") + " " + confirmed.get("placeAddress", "")).strip()
-                if confirmed else q
-            )
-            lat_in = st.session_state.lat_val
-            lng_in = st.session_state.lng_val
+            confirmed = st.session_state.addr_confirmed
+            address_str = confirmed["label"] if confirmed else q
+            start_time = time_type(int(start_hour), int(start_min))
             inputs = {
-                "latitude":       lat_in  if lat_in  != 0.0 else None,
-                "longitude":      lng_in  if lng_in  != 0.0 else None,
+                "latitude":       lat_in,
+                "longitude":      lng_in,
                 "address":        address_str,
                 "event_type":     event_type,
                 "event_cause":    event_cause,
                 "start_datetime": datetime.combine(start_date, start_time).isoformat(),
-                "road_closure":   True,
             }
-            with st.spinner("Running severity model..."):
-                score = predict_severity_score(inputs)
-            st.session_state.severity_result = {"score": score, "inputs": inputs}
+            with st.spinner("Running prediction models..."):
+                result = predict(inputs)
+            if result.get("ok"):
+                st.session_state.severity_result = {"result": result, "inputs": inputs}
+            else:
+                st.session_state.severity_result = None
+                st.error(result.get("error", "Unable to predict right now."))
 
-    # ── RESULT ────────────────────────────────────────────────────────────────
     res = st.session_state.get("severity_result")
     if res:
-        score  = res["score"]
+        score = res["result"]["severity"]
+        closure = res["result"]["road_closure"]
         inputs = res["inputs"]
-        level, color, bg, border = _severity_meta(score)
+
+        level, color, bg, border = severity_meta(score)
         pct = score / 10 * 100
 
-        dt_str  = inputs.get("start_datetime", "").replace("T", "  at  ")
-        lat_v   = inputs.get("latitude")
-        lng_v   = inputs.get("longitude")
-        coord   = (
+        dt_str = inputs.get("start_datetime", "").replace("T", "  at  ")
+        lat_v = inputs.get("latitude")
+        lng_v = inputs.get("longitude")
+        coord = (
             f'<div class="rc-detail">Coordinates: {lat_v:.6f}, {lng_v:.6f}</div>'
-            if (lat_v is not None and lng_v is not None) else ""
+            if lat_v is not None and lng_v is not None else ""
         )
         loc_row = (
             f'<div class="rc-detail">Location: {inputs["address"]}</div>'
             if inputs.get("address") else ""
         )
+        closure_color = "#dc2626" if closure else "#16a34a"
+        closure_label = "ROAD CLOSURE REQUIRED" if closure else "NO ROAD CLOSURE"
+        closure_bg = "#fef2f2" if closure else "#f0fdf4"
 
         st.markdown(f"""
         <div class="result-card" style="border-color:{border};background:{bg}">
-          <div class="rc-header">Severity Prediction Result</div>
+          <div class="rc-header">Prediction Result</div>
           <div class="rc-score" style="color:{color}">{score:.1f}</div>
           <div class="rc-max">out of 10.0</div>
           <div class="rc-bar-bg">
             <div class="rc-bar" style="width:{pct:.1f}%;background:{color}"></div>
           </div>
-          <div class="rc-badge" style="border-color:{border};color:{color};background:{bg}">
-            {level.upper()} SEVERITY
+          <div class="rc-badges">
+            <span class="rc-badge" style="border-color:{border};color:{color}">{level.upper()} SEVERITY</span>
+            <span class="rc-closure-badge" style="color:{closure_color};border-color:{closure_color};background:{closure_bg}">{closure_label}</span>
           </div>
           <div class="rc-details">
             {loc_row}
