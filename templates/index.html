@@ -1,0 +1,183 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Route Detour Prototype</title>
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet.draw/1.0.4/leaflet.draw.css"/>
+
+    <style>
+        html, body {
+            margin: 0;
+            height: 100%;
+        }
+        #map {
+            width: 100%;
+            height: 100vh;
+            position: relative;
+        }
+        /* Style for the metrics box */
+        #metrics-panel {
+            position: absolute;
+            top: 20px;
+            right: 20px;
+            z-index: 1000;
+            background: white;
+            padding: 15px;
+            border-radius: 8px;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+            font-family: Arial, sans-serif;
+            display: none;
+            min-width: 220px;
+        }
+        #metrics-panel h4 {
+            margin: 0 0 10px 0;
+            color: #333;
+            border-bottom: 1px solid #eee;
+            padding-bottom: 5px;
+        }
+        .metric-row {
+            margin-bottom: 8px;
+            font-size: 14px;
+            color: #555;
+        }
+        .metric-value {
+            font-weight: bold;
+            color: #000;
+        }
+        .highlight-increase {
+            color: #d9534f;
+            font-weight: bold;
+        }
+    </style>
+</head>
+
+<body>
+    <div id="map">
+        <div id="metrics-panel">
+            <h4>Route Metrics</h4>
+            <div class="metric-row">Original Dist: <span id="orig-dist" class="metric-value">0</span> m</div>
+            <div class="metric-row">Detour Dist: <span id="detour-dist" class="metric-value">0</span> m</div>
+            <div class="metric-row">Net Increase: <span id="increase-dist" class="highlight-increase">0</span> m</div>
+        </div>
+    </div>
+
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet.draw/1.0.4/leaflet.draw.js"></script>
+
+    <script>
+        var map = L.map('map').setView([12.9716, 77.5946], 12);
+
+        L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
+            maxZoom: 19
+        }).addTo(map);
+
+        var drawnItems = new L.FeatureGroup();
+        var corridorLayer = null;
+
+        map.addLayer(drawnItems);
+
+        var drawControl = new L.Control.Draw({
+            draw: {
+                polyline: true,
+                polygon: false,
+                rectangle: false,
+                circle: false,
+                marker: true,
+                circlemarker: false
+            },
+            edit: {
+                featureGroup: drawnItems
+            }
+        });
+
+        map.addControl(drawControl);
+
+        map.on(L.Draw.Event.CREATED, function(event) {
+            var layer = event.layer;
+            var type = event.layerType;
+
+            drawnItems.clearLayers();
+            drawnItems.addLayer(layer);
+
+            var formattedCoords = [];
+
+            if (type === 'marker') {
+                var pt = layer.getLatLng();
+                formattedCoords.push({ lat: pt.lat, lng: pt.lng });
+            } else if (type === 'polyline') {
+                var coords = layer.getLatLngs();
+                formattedCoords = coords.map(function(point) {
+                    return { lat: point.lat, lng: point.lng };
+                });
+            }
+
+            document.body.style.cursor = "wait";
+
+            fetch("/block-road", {
+                method: "POST",
+                headers: {
+                    "Content-Type": "application/json"
+                },
+                body: JSON.stringify({
+                    coordinates: formattedCoords
+                })
+            })
+            .then(response => response.json())
+            .then(data => {
+                document.body.style.cursor = "default";
+
+                if (data.status === "error") {
+                    alert(data.message);
+                    document.getElementById("metrics-panel").style.display = "none";
+                    return;
+                }
+
+                // Render metrics panel
+                document.getElementById("orig-dist").innerText = data.original_length;
+                document.getElementById("detour-dist").innerText = data.detour_length;
+                document.getElementById("increase-dist").innerText = "+ " + data.length_increase;
+                document.getElementById("metrics-panel").style.display = "block";
+
+                // 1. Handle red buffer corridor
+                if (corridorLayer) {
+                    map.removeLayer(corridorLayer);
+                }
+                
+                if (data.buffer) {
+                    corridorLayer = L.geoJSON(data.buffer, {
+                        style: { color: "red", weight: 2, fillOpacity: 0.4 }
+                    }).addTo(map);
+                }
+
+                // 2. Handle blocked roads highlight
+                if (window.blockedRoadLayer) {
+                    map.removeLayer(window.blockedRoadLayer);
+                }
+
+                if (data.blocked_roads) {
+                    window.blockedRoadLayer = L.geoJSON(JSON.parse(data.blocked_roads), {
+                        style: { color: "red", weight: 5 }
+                    }).addTo(map);
+                }
+
+                // 3. Handle green detour route
+                if (window.detourLayer) {
+                    map.removeLayer(window.detourLayer);
+                }
+
+                if (data.detour_route) {
+                    window.detourLayer = L.polyline(data.detour_route, {
+                        color: "green",
+                        weight: 6
+                    }).addTo(map);
+                }
+            })
+            .catch(error => {
+                document.body.style.cursor = "default";
+                alert("Server error: Could not calculate route.");
+                console.error(error);
+            });
+        });
+    </script>
+</body>
+</html>
