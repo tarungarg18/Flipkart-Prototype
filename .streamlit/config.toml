@@ -7,7 +7,12 @@ textColor                = "#1e1e2e"
 font                     = "sans serif"
 
 [server]
-runOnSave                = true
+headless                 = true
+enableCORS               = false
+enableXsrfProtection     = false
+enableWebsocketCompression = false
+maxUploadSize            = 50
 
 [browser]
 gatherUsageStats         = false
+serverAddress            = "localhost"

@@ -26,8 +26,7 @@ ENV/
 .env.local
 .env.*.local
 
-# Road network graph (too large for GitHub, regenerate with: python setup_map.py)
-bengaluru_drive.graphml
+# Road network graph is tracked via Git LFS (see .gitattributes)
 cache/
 
 # Data artifacts

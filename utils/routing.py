@@ -4,15 +4,29 @@ import streamlit as st
 GRAPH_PATH = os.path.join(os.path.dirname(os.path.dirname(__file__)), "bengaluru_drive.graphml")
 BIG = 1e12
 
+# OSM query used when the local file is absent (e.g. on Render)
+_OSM_PLACE = "Bengaluru, Karnataka, India"
+
 
 def graph_available():
-    return os.path.exists(GRAPH_PATH)
+    return True  # always available — fetched from OSM if local file missing
 
 
-@st.cache_resource(show_spinner=False)
+@st.cache_resource(show_spinner="Loading Bangalore road network…")
 def load_graph():
     import osmnx as ox
-    G = ox.load_graphml(GRAPH_PATH)
+
+    if os.path.exists(GRAPH_PATH):
+        G = ox.load_graphml(GRAPH_PATH)
+    else:
+        # Download from OpenStreetMap (runs once per server lifetime)
+        G = ox.graph_from_place(_OSM_PLACE, network_type="drive")
+        # Try to cache locally so subsequent restarts are instant
+        try:
+            ox.save_graphml(G, GRAPH_PATH)
+        except Exception:
+            pass  # read-only filesystem on some hosts — fine, graph stays in memory
+
     nodes, edges = ox.graph_to_gdfs(G)
     _ = edges.sindex
     _ = nodes.sindex
