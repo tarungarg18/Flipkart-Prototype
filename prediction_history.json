@@ -1,0 +1,35 @@
+[
+  {
+    "id": "26f8ff43",
+    "timestamp": "2026-06-21T17:51:24.976843",
+    "inputs": {
+      "latitude": 12.9999597,
+      "longitude": 77.6160948,
+      "address": "Hello Cell Phone Service Centre, Mosque Road, Frazer Town, Bengaluru - 560005, KA, India",
+      "event_type": "Planned",
+      "event_cause": "Congestion",
+      "start_datetime": "2026-06-21T09:00:00",
+      "selection": [
+        {
+          "lat": 12.9999597,
+          "lng": 77.6160948
+        }
+      ]
+    },
+    "result": {
+      "ok": true,
+      "severity": 2.6,
+      "road_closure": false,
+      "closure_prob": 0.00038838223808420675,
+      "incident_span_m": 0.0,
+      "is_heavy_vehicle": false,
+      "barricades": 4,
+      "manpower_count": 5,
+      "manpower_deployment": "5 Police Constables (Routine Lane Management)",
+      "diversion_plan": "Maintain standard stream. Handle locally with directional flag points.",
+      "cluster_id": 6,
+      "is_on_corridor": false
+    },
+    "actuals": null
+  }
+]

@@ -63,9 +63,6 @@ def _tiles():
     return "OpenStreetMap"
 
 
-def _skeleton(height):
-    return f'<div class="skeleton" style="height:{height}px"></div>'
-
 
 def build_map(lat, lng):
     import folium
@@ -130,20 +127,20 @@ def render_detour(coords):
     from utils.routing import graph_available, compute_closure
 
     st.markdown(
-        '<p class="section-label">Predicted Road Closure &amp; Reroute &nbsp;&middot;&nbsp;'
-        '<span class="section-label-hint">live route impact</span></p>',
+        '<p style="font-size:0.68rem;font-weight:700;color:#94a3b8;text-transform:uppercase;'
+        'letter-spacing:0.8px;margin:0 0 10px;padding:0">PREDICTED ROAD CLOSURE & REROUTE'
+        ' <span style="font-weight:400;color:#cbd5e1;text-transform:none;letter-spacing:0">'
+        'live route impact</span></p>',
         unsafe_allow_html=True,
     )
     if not graph_available():
         st.info("Road network not available. Run setup_map.py once to enable the reroute map.")
         return
 
-    ph = st.empty()
-    ph.markdown(_skeleton(380), unsafe_allow_html=True)
-    data = compute_closure(coords)
+    with st.spinner("Computing reroute..."):
+        data = compute_closure(coords)
 
     if not data.get("ok"):
-        ph.empty()
         st.warning(data.get("error", "Could not calculate a reroute for this selection."))
         return
 
@@ -160,7 +157,6 @@ def render_detour(coords):
     folium.Marker(location=[center["lat"], center["lng"]], tooltip="Event location",
                   icon=folium.Icon(color="purple")).add_to(m)
 
-    ph.empty()
     components.html(m.get_root().render(), height=390)
 
     if data["avoided"] and data["length_increase"] is not None:
@@ -207,33 +203,26 @@ def render_header_nav():
 def render_predictor():
     lat_val = st.session_state.lat_val
     lng_val = st.session_state.lng_val
+    needs_geocode = (
+        lat_val != 0.0 and lng_val != 0.0
+        and (lat_val, lng_val) != st.session_state.last_rev_geocode
+    )
 
-    if (lat_val != 0.0 and lng_val != 0.0
-            and (lat_val, lng_val) != st.session_state.last_rev_geocode):
-        addr = reverse_geocode(lat_val, lng_val)
-        st.session_state.last_rev_geocode = (lat_val, lng_val)
-        if st.session_state.selection_kind != "path":
-            st.session_state.selection_coords = [{"lat": lat_val, "lng": lng_val}]
-            st.session_state.selection_kind = "point"
-        if addr:
-            st.session_state.addr_confirmed = {"label": addr, "lat": lat_val, "lon": lng_val}
-            st.session_state.addr_results = []
-
+    # --- MAP ---
     st.markdown(
-        '<p class="section-label">Bangalore Map &nbsp;&middot;&nbsp;'
-        '<span class="section-label-hint">drop a marker for a point, or draw a line for a road stretch</span></p>',
+        '<p style="font-size:0.68rem;font-weight:700;color:#94a3b8;text-transform:uppercase;'
+        'letter-spacing:0.8px;margin:0 0 10px;padding:0">BANGALORE MAP'
+        ' <span style="font-weight:400;color:#cbd5e1;text-transform:none;letter-spacing:0">'
+        'drop a marker for a point, or draw a line for a road stretch</span></p>',
         unsafe_allow_html=True,
     )
 
     from streamlit_folium import st_folium
-    mph = st.empty()
-    mph.markdown(_skeleton(380), unsafe_allow_html=True)
     m = build_map(lat_val, lng_val)
     map_data = st_folium(
         m, height=380, use_container_width=True, key="input_map",
         returned_objects=["last_active_drawing"],
     )
-    mph.empty()
 
     drawing = map_data.get("last_active_drawing") if map_data else None
     if drawing and drawing != st.session_state.last_drawing:
@@ -248,12 +237,37 @@ def render_predictor():
             st.rerun()
 
     if st.session_state.selection_kind == "path":
-        st.caption(f"Selected road stretch with {len(st.session_state.selection_coords)} points.")
+        st.caption(f"Selected road stretch · {len(st.session_state.selection_coords)} points")
     elif st.session_state.selection_kind == "point":
-        st.caption("Selected a single point.")
+        st.caption("Single point selected")
 
+    # --- LOCATION ---
     st.divider()
-    st.markdown('<p class="section-label">Location</p>', unsafe_allow_html=True)
+    st.markdown(
+        '<p style="font-size:0.68rem;font-weight:700;color:#94a3b8;text-transform:uppercase;'
+        'letter-spacing:0.8px;margin:0 0 10px;padding:0">LOCATION</p>',
+        unsafe_allow_html=True,
+    )
+
+    # Reverse-geocode the selected point and show skeleton while fetching
+    if needs_geocode:
+        _geo_ph = st.empty()
+        _geo_ph.markdown(
+            '<div style="border-radius:8px;'
+            'background:linear-gradient(90deg,#eef2f7 25%,#e2e8f0 50%,#eef2f7 75%);'
+            'background-size:400% 100%;animation:shimmer 1.4s ease infinite;'
+            'height:42px;margin-bottom:8px"></div>',
+            unsafe_allow_html=True,
+        )
+        addr = reverse_geocode(lat_val, lng_val)
+        st.session_state.last_rev_geocode = (lat_val, lng_val)
+        if st.session_state.selection_kind != "path":
+            st.session_state.selection_coords = [{"lat": lat_val, "lng": lng_val}]
+            st.session_state.selection_kind = "point"
+        _geo_ph.empty()
+        if addr:
+            st.session_state.addr_confirmed = {"label": addr, "lat": lat_val, "lon": lng_val}
+            st.session_state.addr_results = []
 
     addr_input = st.text_input(
         "Search address",
@@ -287,14 +301,23 @@ def render_predictor():
 
     if st.session_state.addr_confirmed:
         c = st.session_state.addr_confirmed
-        st.markdown(f'<div class="confirmed-addr">{c["label"]}</div>', unsafe_allow_html=True)
+        st.markdown(
+            f'<div style="background:#f0fdf4;border:1px solid #bbf7d0;border-radius:8px;'
+            f'padding:9px 14px;margin:6px 0 10px;font-size:0.85rem;color:#166534;font-weight:600">'
+            f'{c["label"]}</div>',
+            unsafe_allow_html=True,
+        )
 
     ll1, ll2 = st.columns(2)
     ll1.number_input("Latitude", key="lat_val", format="%.6f", step=0.0001)
     ll2.number_input("Longitude", key="lng_val", format="%.6f", step=0.0001)
 
     st.divider()
-    st.markdown('<p class="section-label">Event Details</p>', unsafe_allow_html=True)
+    st.markdown(
+        '<p style="font-size:0.68rem;font-weight:700;color:#94a3b8;text-transform:uppercase;'
+        'letter-spacing:0.8px;margin:0 0 10px;padding:0">EVENT DETAILS</p>',
+        unsafe_allow_html=True,
+    )
 
     with st.form("predict_form", border=False):
         ec1, ec2 = st.columns(2)
