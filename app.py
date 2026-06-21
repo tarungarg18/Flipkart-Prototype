@@ -1,7 +1,7 @@
 import streamlit as st
 
 st.set_page_config(
-    page_title="Event Traffic Severity Predictor",
+    page_title="Smart Traffic Command Center",
     layout="wide",
     initial_sidebar_state="collapsed",
 )
