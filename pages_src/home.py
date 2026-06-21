@@ -267,7 +267,14 @@ def render_predictor():
         _geo_ph.empty()
         if addr:
             st.session_state.addr_confirmed = {"label": addr, "lat": lat_val, "lon": lng_val}
-            st.session_state.addr_results = []
+        else:
+            # Geocoding unavailable (no API key or network error) — show coordinates
+            st.session_state.addr_confirmed = {
+                "label": f"Selected location · {lat_val:.6f}, {lng_val:.6f}",
+                "lat": lat_val,
+                "lon": lng_val,
+            }
+        st.session_state.addr_results = []
 
     addr_input = st.text_input(
         "Search address",

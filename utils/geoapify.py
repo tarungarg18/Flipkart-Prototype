@@ -1,12 +1,18 @@
+import os
 import requests
 import streamlit as st
 
 
 def _key():
+    # 1. Streamlit secrets (local dev / Streamlit Cloud)
     try:
-        return st.secrets.get("GEOAPIFY_KEY") or st.secrets.get("Geoapify", "") or ""
+        k = st.secrets.get("GEOAPIFY_KEY") or st.secrets.get("Geoapify", "")
+        if k:
+            return k
     except Exception:
-        return ""
+        pass
+    # 2. Environment variable (Render and other hosts)
+    return os.environ.get("GEOAPIFY_KEY", "")
 
 
 def search_places(query):
