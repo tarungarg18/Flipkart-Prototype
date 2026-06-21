@@ -3,7 +3,14 @@ import os
 import uuid
 from datetime import datetime
 
-_FILE = os.path.join(os.path.dirname(os.path.dirname(__file__)), "prediction_history.json")
+_FILE_PRIMARY = os.path.join(os.path.dirname(os.path.dirname(__file__)), "prediction_history.json")
+_FILE_TMP     = "/tmp/prediction_history.json"
+
+def _history_file():
+    parent = os.path.dirname(_FILE_PRIMARY)
+    return _FILE_PRIMARY if os.access(parent, os.W_OK) else _FILE_TMP
+
+_FILE = _history_file()
 
 
 def load():

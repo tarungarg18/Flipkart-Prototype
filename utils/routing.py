@@ -1,31 +1,53 @@
 import os
 import streamlit as st
 
-GRAPH_PATH = os.path.join(os.path.dirname(os.path.dirname(__file__)), "bengaluru_drive.graphml")
+_GRAPH_PRIMARY = os.path.join(os.path.dirname(os.path.dirname(__file__)), "bengaluru_drive.graphml")
+_GRAPH_TMP     = "/tmp/bengaluru_drive.graphml"
 BIG = 1e12
-
-# OSM query used when the local file is absent (e.g. on Render)
 _OSM_PLACE = "Bengaluru, Karnataka, India"
 
 
+def _is_real_graphml(path):
+    """Return False if the file is a Git LFS pointer instead of actual GraphML."""
+    try:
+        with open(path, "rb") as f:
+            head = f.read(32)
+        return head.startswith(b"<?xml") or head.startswith(b"<graphml")
+    except Exception:
+        return False
+
+
+def _writable_cache_path():
+    parent = os.path.dirname(_GRAPH_PRIMARY)
+    return _GRAPH_PRIMARY if os.access(parent, os.W_OK) else _GRAPH_TMP
+
+
 def graph_available():
-    return True  # always available — fetched from OSM if local file missing
+    return True
 
 
-@st.cache_resource(show_spinner="Loading Bangalore road network…")
+@st.cache_resource(show_spinner="Loading Bangalore road network… (first load ~60 s)")
 def load_graph():
     import osmnx as ox
 
-    if os.path.exists(GRAPH_PATH):
-        G = ox.load_graphml(GRAPH_PATH)
+    # Point osmnx HTTP cache at /tmp so it never writes to the read-only project root
+    try:
+        ox.settings.cache_folder = "/tmp/osmnx_cache"
+    except Exception:
+        pass
+
+    # Try the committed graphml first — but skip it if it's a Git LFS pointer file
+    if os.path.exists(_GRAPH_PRIMARY) and _is_real_graphml(_GRAPH_PRIMARY):
+        G = ox.load_graphml(_GRAPH_PRIMARY)
+    elif os.path.exists(_GRAPH_TMP):
+        G = ox.load_graphml(_GRAPH_TMP)
     else:
-        # Download from OpenStreetMap (runs once per server lifetime)
+        # Download from OpenStreetMap (once per server lifetime, cached by @st.cache_resource)
         G = ox.graph_from_place(_OSM_PLACE, network_type="drive")
-        # Try to cache locally so subsequent restarts are instant
         try:
-            ox.save_graphml(G, GRAPH_PATH)
+            ox.save_graphml(G, _writable_cache_path())
         except Exception:
-            pass  # read-only filesystem on some hosts — fine, graph stays in memory
+            pass
 
     nodes, edges = ox.graph_to_gdfs(G)
     _ = edges.sindex
