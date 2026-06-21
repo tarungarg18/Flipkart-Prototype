@@ -357,44 +357,59 @@ def render_predictor():
         level, color, bg, border = severity_meta(score)
         pct = score / 10 * 100
 
-        dt_str  = inputs.get("start_datetime", "").replace("T", "  at  ")
-        lat_v   = inputs.get("latitude")
-        lng_v   = inputs.get("longitude")
-        coord   = (
-            f'<div class="rc-detail"><span>Coordinates</span><b>{lat_v:.6f}, {lng_v:.6f}</b></div>'
-            if lat_v is not None and lng_v is not None else ""
-        )
-        loc_row = (
-            f'<div class="rc-detail"><span>Location</span><b>{inputs["address"]}</b></div>'
-            if inputs.get("address") else ""
-        )
+        dt_str = inputs.get("start_datetime", "").replace("T", "  at  ")
+        lat_v  = inputs.get("latitude")
+        lng_v  = inputs.get("longitude")
+
         closure_color = "#dc2626" if closure else "#16a34a"
         closure_text  = "ROAD CLOSURE REQUIRED" if closure else "NO ROAD CLOSURE"
         if closure_prob is not None:
-            closure_text += f" &middot; {closure_prob * 100:.0f}%"
+            closure_text += f" · {closure_prob * 100:.0f}%"
         closure_bg = "#fef2f2" if closure else "#f0fdf4"
 
+        _S = ("display:flex;justify-content:space-between;gap:18px;"
+              "font-size:0.97rem;align-items:baseline;margin-bottom:11px")
+        _LBL = "color:#94a3b8;font-weight:600;white-space:nowrap"
+        _VAL = "color:#1e293b;font-weight:700;text-align:right"
+
+        def _row(lbl, val):
+            return f'<div style="{_S}"><span style="{_LBL}">{lbl}</span><b style="{_VAL}">{val}</b></div>'
+
+        rows = ""
+        if inputs.get("address"):
+            rows += _row("Location", inputs["address"])
+        rows += _row("Date & Time", dt_str)
+        rows += _row("Type / Cause", f'{inputs.get("event_type", "")} · {inputs.get("event_cause", "")}')
+        if lat_v is not None and lng_v is not None:
+            rows += _row("Coordinates", f"{lat_v:.6f}, {lng_v:.6f}")
+        rows += _row("Barricades", f"{barricades} units")
+        rows += _row("Manpower", manpower)
+        rows += _row("Diversion", diversion)
+
         st.markdown(f"""
-        <div class="result-card" style="border-color:{border};background:{bg}">
-          <div class="rc-header">Prediction Result</div>
-          <div class="rc-score" style="color:{color}">{score:.1f}</div>
-          <div class="rc-max">out of 10.0</div>
-          <div class="rc-bar-bg">
-            <div class="rc-bar" style="width:{pct:.1f}%;background:{color}"></div>
+        <div style="border:1.5px solid {border};border-radius:14px;padding:28px 24px 22px;
+                    margin-top:20px;background:{bg}">
+          <div style="font-size:0.67rem;font-weight:700;text-transform:uppercase;
+                      letter-spacing:0.8px;color:#94a3b8;margin-bottom:14px;text-align:center">
+            Prediction Result
           </div>
-          <div class="rc-badges">
-            <span class="rc-badge" style="border-color:{border};color:{color}">{level.upper()} SEVERITY</span>
-            <span class="rc-closure-badge" style="color:{closure_color};border-color:{closure_color};background:{closure_bg}">{closure_text}</span>
+          <div style="font-size:3.8rem;font-weight:900;line-height:1;letter-spacing:-2px;
+                      color:{color};text-align:center">{score:.1f}</div>
+          <div style="font-size:0.9rem;color:#94a3b8;margin-top:2px;margin-bottom:14px;
+                      text-align:center">out of 10.0</div>
+          <div style="height:7px;background:#e2e8f0;border-radius:99px;overflow:hidden;
+                      margin:0 auto 16px;max-width:260px">
+            <div style="height:100%;width:{pct:.1f}%;background:{color};border-radius:99px"></div>
           </div>
-          <div class="rc-details">
-            {loc_row}
-            <div class="rc-detail"><span>Date &amp; Time</span><b>{dt_str}</b></div>
-            <div class="rc-detail"><span>Type / Cause</span><b>{inputs.get("event_type","")} &middot; {inputs.get("event_cause","")}</b></div>
-            {coord}
-            <div class="rc-detail"><span>Barricades</span><b>{barricades} units</b></div>
-            <div class="rc-detail"><span>Manpower</span><b>{manpower}</b></div>
-            <div class="rc-detail"><span>Diversion</span><b>{diversion}</b></div>
+          <div style="display:flex;gap:10px;justify-content:center;flex-wrap:wrap;margin-bottom:18px">
+            <span style="font-size:0.73rem;font-weight:700;letter-spacing:0.5px;border:1.5px solid {border};
+                         color:{color};border-radius:99px;padding:4px 16px">{level.upper()} SEVERITY</span>
+            <span style="font-size:0.73rem;font-weight:700;letter-spacing:0.5px;border:1.5px solid {closure_color};
+                         color:{closure_color};background:{closure_bg};border-radius:99px;padding:4px 16px">
+              {closure_text}
+            </span>
           </div>
+          <div style="border-top:1px solid #e2e8f0;padding-top:16px">{rows}</div>
         </div>
         """, unsafe_allow_html=True)
 
