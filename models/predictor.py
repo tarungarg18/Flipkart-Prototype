@@ -20,15 +20,27 @@ CAUSE_LABEL_MAP = {
 }
 
 
-def _detect_corridor(address):
-    if not address:
+def _detect_corridor(address, latitude=None, longitude=None):
+    # Start from the geocoded address text.
+    blob = runtime.clean_key(address) if address else ""
+    # Augment with real road names from the road graph (best-effort). This is
+    # far more reliable than the geocoder, which often returns a nearby POI
+    # (a hotel/clinic) instead of the corridor road name.
+    if latitude is not None and longitude is not None:
+        try:
+            from utils.routing import nearest_road_text
+            road = nearest_road_text(latitude, longitude)
+            if road:
+                blob = f"{blob} {runtime.clean_key(road)}"
+        except Exception:
+            pass
+    if not blob:
         return None, 0
-    cleaned = runtime.clean_key(address)
     best = None
     for key in runtime.corridor_keys():
         if key == "non_corridor":
             continue
-        if key in cleaned and (best is None or len(key) > len(best)):
+        if key in blob and (best is None or len(key) > len(best)):
             best = key
     if best:
         return best, 1
@@ -57,7 +69,7 @@ def predict(inputs):
             lng = inputs.get("longitude")
             endlat = endlng = None
 
-        corridor_name, is_on_corridor = _detect_corridor(inputs.get("address"))
+        corridor_name, is_on_corridor = _detect_corridor(inputs.get("address"), lat, lng)
 
         return runtime.infer(
             cause=cause,

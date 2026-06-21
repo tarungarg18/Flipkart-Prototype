@@ -55,6 +55,28 @@ def load_graph():
     return G, nodes, edges
 
 
+def nearest_road_text(lat, lng):
+    """Lowercased blob of nearby road names + refs from the graph, used for
+    corridor detection. Best-effort: returns '' on any failure so callers can
+    fall back to address-based detection without breaking."""
+    try:
+        from shapely.geometry import Point
+        _G, _nodes, edges = load_graph()
+        buf = Point(lng, lat).buffer(0.0012)  # ~130 m
+        positions = edges.sindex.query(buf, predicate="intersects")
+        parts = []
+        for pos in list(positions)[:60]:
+            row = edges.iloc[pos]
+            for val in (row.get("name"), row.get("ref")):
+                if isinstance(val, (list, tuple)):
+                    parts.extend(str(x) for x in val)
+                elif val is not None and str(val).lower() != "nan":
+                    parts.append(str(val))
+        return " ".join(parts).lower()
+    except Exception:
+        return ""
+
+
 def _nearest_edge(edges, lng, lat):
     from shapely.geometry import Point
     pos = edges.sindex.nearest(Point(lng, lat), return_all=False)[1][0]
