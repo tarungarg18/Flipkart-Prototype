@@ -68,16 +68,55 @@ def _nearest_node(nodes, lng, lat):
     return int(nodes.index[pos])
 
 
-def _edge_geoms(edges, blocked_index):
+def _edge_geoms(edges, blocked_index, G):
+    """Coordinates of each blocked edge, following its true road geometry.
+    Falls back to the straight node-to-node segment when an edge has no
+    stored geometry (otherwise straight edges would be silently dropped)."""
     out = []
     for idx in blocked_index:
         try:
             geom = edges.loc[idx].geometry
         except Exception:
-            continue
+            geom = None
         if geom is not None and geom.geom_type == "LineString":
             out.append([[lat, lng] for lng, lat in geom.coords])
+        else:
+            try:
+                u, v = int(idx[0]), int(idx[1])
+                out.append([[G.nodes[u]["y"], G.nodes[u]["x"]],
+                            [G.nodes[v]["y"], G.nodes[v]["x"]]])
+            except Exception:
+                continue
     return out
+
+
+def _route_to_coords(G, route):
+    """Build the polyline for a node path by following each edge's real
+    geometry, instead of drawing straight lines between node centers.
+    Without this, curved roads render as chords that appear to cut across
+    areas with no road."""
+    if not route or len(route) < 2:
+        return [[G.nodes[n]["y"], G.nodes[n]["x"]] for n in route]
+    coords = []
+    for u, v in zip(route[:-1], route[1:]):
+        data = G.get_edge_data(u, v)
+        if not data:
+            coords.append([G.nodes[u]["y"], G.nodes[u]["x"]])
+            continue
+        best = min(data.values(), key=lambda d: d.get("length", 1e18))
+        geom = best.get("geometry")
+        if geom is not None and geom.geom_type == "LineString":
+            pts = [[lat, lng] for lng, lat in geom.coords]
+            # geometry may be stored v->u; flip so it runs u->v
+            uy, ux = G.nodes[u]["y"], G.nodes[u]["x"]
+            if (abs(pts[0][0] - uy) + abs(pts[0][1] - ux)) > \
+               (abs(pts[-1][0] - uy) + abs(pts[-1][1] - ux)):
+                pts.reverse()
+        else:
+            pts = [[G.nodes[u]["y"], G.nodes[u]["x"]],
+                   [G.nodes[v]["y"], G.nodes[v]["x"]]]
+        coords.extend(pts[1:] if coords and coords[-1] == pts[0] else pts)
+    return coords
 
 
 @st.cache_data(show_spinner=False)
@@ -102,7 +141,7 @@ def compute_closure(coords):
         end_node = _nearest_node(nodes, coords[-1]["lng"], coords[-1]["lat"])
         buffer_geojson = mapping(corridor)
 
-    blocked_coords = _edge_geoms(edges, blocked_index)
+    blocked_coords = _edge_geoms(edges, blocked_index, G)
 
     try:
         original_length = nx.shortest_path_length(G, start_node, end_node, weight="length")
@@ -135,7 +174,7 @@ def compute_closure(coords):
             else:
                 G[a][b][kk]["length"] = val
 
-    route_coords = [[G.nodes[n]["y"], G.nodes[n]["x"]] for n in route]
+    route_coords = _route_to_coords(G, route)
 
     avoided = detour_length is not None and detour_length < BIG
     real_detour_len = detour_length if avoided else None
