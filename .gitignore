@@ -1,6 +1,3 @@
-<<<<<<< HEAD
-bengaluru_drive.graphml
-=======
 # Python
 __pycache__/
 *.py[cod]
@@ -29,17 +26,14 @@ ENV/
 .env.local
 .env.*.local
 
-# Data & model artifacts
+# Road network graph (too large for GitHub, regenerate with: python setup_map.py)
+bengaluru_drive.graphml
+cache/
+
+# Data artifacts
 data/*.csv
 data/*.db
 data/*.sqlite
-models/*.pkl
-models/*.joblib
-models/*.h5
-models/*.pt
-models/*.pth
-models/*.bin
-*.model
 
 # IDE
 .vscode/
@@ -66,4 +60,3 @@ service_account.json
 
 # OS
 .DS_Store
->>>>>>> 276800f079b357dfcd3e3f144f805595294096fa

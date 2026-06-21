@@ -1,0 +1,41 @@
+[
+  {
+    "id": "45e29ca8",
+    "timestamp": "2026-06-21T13:25:32.945143",
+    "inputs": {
+      "latitude": 12.973111,
+      "longitude": 77.573718,
+      "address": "Sri Prasanna Krishna Swami Gudi, Gandhinagar, Bengaluru - 560053, KA, India",
+      "event_type": "Planned",
+      "event_cause": "Accident",
+      "start_datetime": "2026-06-21T09:00:00",
+      "selection": [
+        {
+          "lat": 12.973111,
+          "lng": 77.573718
+        }
+      ]
+    },
+    "result": {
+      "ok": true,
+      "severity": 4.3,
+      "road_closure": false,
+      "closure_prob": 0.0007609213093728746,
+      "incident_span_m": 0.0,
+      "is_heavy_vehicle": false,
+      "barricades": 5,
+      "manpower_count": 8,
+      "manpower_deployment": "8 Police Constables (Routine Lane Management)",
+      "diversion_plan": "Maintain standard stream. Handle locally with directional flag points.",
+      "cluster_id": 15,
+      "is_on_corridor": false
+    },
+    "actuals": {
+      "severity": 5.0,
+      "barricades": 4,
+      "manpower": 6,
+      "notes": "",
+      "saved_at": "2026-06-21T13:45:55.869199"
+    }
+  }
+]
